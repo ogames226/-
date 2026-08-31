@@ -322,7 +322,8 @@
                 const ruffleInst = await waitForRuffle();
                 if (ruffleInst) {
                     const arrayBuffer = base64ToArrayBuffer(base64Data);
-                    await initRuffleWithSource(ruffleInst, { data: arrayBuffer, swfUrl: filename || "game.swf" }, filename);
+                    const uint8Array = new Uint8Array(arrayBuffer);
+                    await initRuffleWithSource(ruffleInst, { data: uint8Array, swfUrl: filename || "game.swf" }, filename);
                 } else {
                     console.warn("Ruffle unavailable, starting built-in fallback engine for " + filename);
                     startFallbackEngine(filename);
@@ -332,6 +333,7 @@
                 if (window.AndroidBridge && typeof window.AndroidBridge.onPlayerError === 'function') {
                     window.AndroidBridge.onPlayerError(err.message || String(err));
                 }
+                startFallbackEngine(filename);
             }
         };
 
@@ -892,6 +894,19 @@
                 ctx.fillText('CYBER SNAKE - SCORE: ' + this.score, 20, 30);
             }
         }
+
+        // Auto trigger initial load if bridge already provided data
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                if (!isLoaded && window.AndroidBridge && typeof window.AndroidBridge.getSwfBase64 === 'function') {
+                    const b64 = window.AndroidBridge.getSwfBase64();
+                    if (b64 && b64.length > 50) {
+                        console.log("Auto-loading SWF from AndroidBridge on DOM ready...");
+                        window.loadSwfFromBase64(b64, "game.swf");
+                    }
+                }
+            }, 300);
+        });
     </script>
 </body>
 </html>

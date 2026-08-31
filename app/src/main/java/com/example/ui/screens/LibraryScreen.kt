@@ -191,19 +191,20 @@ fun LibraryScreen(
         containerColor = BentoCanvas
     ) { paddingValues ->
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 160.dp),
+            columns = GridCells.Fixed(1),
             contentPadding = PaddingValues(
                 start = 16.dp,
                 end = 16.dp,
                 top = paddingValues.calculateTopPadding() + 4.dp,
                 bottom = paddingValues.calculateBottomPadding() + 88.dp
             ),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .widthIn(max = 600.dp)
         ) {
             // Bento Hero Card (Spans full width)
-            item(span = { GridItemSpan(maxLineSpan) }) {
+            item {
                 val featuredGame = uiState.games.firstOrNull { it.isFavorite } ?: uiState.games.firstOrNull()
                 BentoHeroCard(
                     featuredGame = featuredGame,
@@ -221,17 +222,23 @@ fun LibraryScreen(
                 )
             }
 
-            // Bento Metric Tiles (Engine FPS + Key Mapping)
-            item(span = { GridItemSpan(1) }) {
-                BentoFpsCard()
-            }
-
-            item(span = { GridItemSpan(1) }) {
-                BentoKeyMappingCard(onClick = onNavigateSettings)
+            // Bento Metric Tiles (Engine FPS + Key Mapping in a Row)
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        BentoFpsCard()
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        BentoKeyMappingCard(onClick = onNavigateSettings)
+                    }
+                }
             }
 
             // Bento Library Storage Status Card (Spans full width)
-            item(span = { GridItemSpan(maxLineSpan) }) {
+            item {
                 BentoStorageCard(
                     totalGames = uiState.games.size,
                     onImportClick = {
@@ -244,7 +251,7 @@ fun LibraryScreen(
             }
 
             // Search Bar & Filter Section
-            item(span = { GridItemSpan(maxLineSpan) }) {
+            item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     AnimatedVisibility(visible = isSearchExpanded || uiState.searchQuery.isNotEmpty()) {
                         OutlinedTextField(
@@ -312,7 +319,7 @@ fun LibraryScreen(
 
             // Games Grid Section
             if (uiState.games.isEmpty()) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
+                item {
                     EmptyStateBentoPlaceholder(
                         searchQuery = uiState.searchQuery,
                         onImportClick = {

@@ -1,6 +1,7 @@
 package com.example
 
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -14,9 +15,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.navigation.compose.NavHost
@@ -89,10 +92,16 @@ fun FlashAppNavigation(viewModel: FlashPlayerViewModel) {
     NavHost(
         navController = navController,
         startDestination = ROUTE_LIBRARY,
-        enterTransition = { fadeIn(animationSpec = tween(250)) },
-        exitTransition = { fadeOut(animationSpec = tween(250)) }
+        enterTransition = { fadeIn(animationSpec = tween(200)) },
+        exitTransition = { fadeOut(animationSpec = tween(200)) }
     ) {
         composable(ROUTE_LIBRARY) {
+            val activity = LocalContext.current as? ComponentActivity
+            DisposableEffect(Unit) {
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                onDispose {}
+            }
+
             LibraryScreen(
                 viewModel = viewModel,
                 uiState = libraryUiState,
@@ -106,6 +115,14 @@ fun FlashAppNavigation(viewModel: FlashPlayerViewModel) {
         }
 
         composable(ROUTE_PLAYER) {
+            val activity = LocalContext.current as? ComponentActivity
+            DisposableEffect(Unit) {
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                onDispose {
+                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                }
+            }
+
             GamePlayerScreen(
                 viewModel = viewModel,
                 playerState = playerState,
@@ -116,6 +133,12 @@ fun FlashAppNavigation(viewModel: FlashPlayerViewModel) {
         }
 
         composable(ROUTE_SETTINGS) {
+            val activity = LocalContext.current as? ComponentActivity
+            DisposableEffect(Unit) {
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                onDispose {}
+            }
+
             SettingsScreen(
                 viewModel = viewModel,
                 onBack = {
@@ -125,4 +148,3 @@ fun FlashAppNavigation(viewModel: FlashPlayerViewModel) {
         }
     }
 }
-
