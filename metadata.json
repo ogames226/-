@@ -1,0 +1,6 @@
+{
+  "name": "Flash Player Wasm",
+  "description": "High-performance Flash Game (.swf) & Projector (.exe) Player powered directly by the Ruffle WebAssembly emulator with virtual gamepad touch overlay, aspect ratio scaling, and local library.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
