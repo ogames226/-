@@ -28,8 +28,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.ControlType
@@ -79,104 +81,108 @@ fun VirtualGamepadOverlay(
         }
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .alpha(config.opacity)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-    ) {
-        // Left Controller (D-Pad or Analog Joystick)
+    // Force Left-to-Right layout so D-Pad is always on Left and Action Buttons on Right regardless of RTL system locale
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Box(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(bottom = 8.dp)
+            modifier = modifier
+                .fillMaxSize()
+                .alpha(config.opacity)
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            if (config.controlType == ControlType.DPAD) {
-                VirtualDPad(
-                    scale = config.scale,
-                    theme = config.theme,
-                    onDirectionDown = { dir, code ->
-                        triggerHaptic()
-                        onDirectionDown(dir, code)
-                    },
-                    onDirectionUp = onDirectionUp
-                )
-            } else {
-                VirtualAnalogJoystick(
-                    scale = config.scale,
-                    theme = config.theme,
-                    onDirectionChange = { dir, isDown, code ->
-                        if (isDown) {
+            // Left Controller (D-Pad or Analog Joystick)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(bottom = 6.dp, start = 4.dp)
+            ) {
+                if (config.controlType == ControlType.DPAD) {
+                    VirtualDPad(
+                        scale = config.scale,
+                        theme = config.theme,
+                        onDirectionDown = { dir, code ->
                             triggerHaptic()
                             onDirectionDown(dir, code)
-                        } else {
-                            onDirectionUp(dir, code)
+                        },
+                        onDirectionUp = onDirectionUp
+                    )
+                } else {
+                    VirtualAnalogJoystick(
+                        scale = config.scale,
+                        theme = config.theme,
+                        onDirectionChange = { dir, isDown, code ->
+                            if (isDown) {
+                                triggerHaptic()
+                                onDirectionDown(dir, code)
+                            } else {
+                                onDirectionUp(dir, code)
+                            }
                         }
+                    )
+                }
+            }
+
+            // Center Utility Buttons (Space, Enter, Esc, Turbo)
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                UtilityButton(
+                    label = "ESC",
+                    binding = config.buttonEsc,
+                    theme = config.theme,
+                    onDown = { triggerHaptic(); onButtonDown(config.buttonEsc) },
+                    onUp = { onButtonUp(config.buttonEsc) }
+                )
+                UtilityButton(
+                    label = "SPACE",
+                    binding = config.buttonSpace,
+                    theme = config.theme,
+                    onDown = { triggerHaptic(); onButtonDown(config.buttonSpace) },
+                    onUp = { onButtonUp(config.buttonSpace) }
+                )
+                UtilityButton(
+                    label = "ENTER",
+                    binding = config.buttonEnter,
+                    theme = config.theme,
+                    onDown = { triggerHaptic(); onButtonDown(config.buttonEnter) },
+                    onUp = { onButtonUp(config.buttonEnter) }
+                )
+                // Turbo mode indicator button
+                TurboButton(
+                    isTurbo = config.turboEnabled,
+                    theme = config.theme,
+                    onClick = {
+                        triggerHaptic()
+                        onToggleTurbo()
                     }
                 )
             }
-        }
 
-        // Center Utility Buttons (Space, Enter, Esc, Turbo)
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            UtilityButton(
-                label = "ESC",
-                binding = config.buttonEsc,
-                theme = config.theme,
-                onDown = { triggerHaptic(); onButtonDown(config.buttonEsc) },
-                onUp = { onButtonUp(config.buttonEsc) }
-            )
-            UtilityButton(
-                label = "SPACE",
-                binding = config.buttonSpace,
-                theme = config.theme,
-                onDown = { triggerHaptic(); onButtonDown(config.buttonSpace) },
-                onUp = { onButtonUp(config.buttonSpace) }
-            )
-            UtilityButton(
-                label = "ENTER",
-                binding = config.buttonEnter,
-                theme = config.theme,
-                onDown = { triggerHaptic(); onButtonDown(config.buttonEnter) },
-                onUp = { onButtonUp(config.buttonEnter) }
-            )
-            // Turbo mode indicator button
-            TurboButton(
-                isTurbo = config.turboEnabled,
-                theme = config.theme,
-                onClick = {
-                    triggerHaptic()
-                    onToggleTurbo()
-                }
-            )
-        }
-
-        // Right Action Cluster (A, B, X, Y)
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(bottom = 8.dp)
-        ) {
-            ActionCluster(
-                scale = config.scale,
-                theme = config.theme,
-                turboActive = config.turboEnabled,
-                bindingA = config.buttonA,
-                bindingB = config.buttonB,
-                bindingX = config.buttonX,
-                bindingY = config.buttonY,
-                onButtonDown = { binding ->
-                    triggerHaptic()
-                    onButtonDown(binding)
-                },
-                onButtonUp = onButtonUp
-            )
+            // Right Action Cluster (A, B, X, Y)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = 6.dp, end = 4.dp)
+            ) {
+                ActionCluster(
+                    scale = config.scale,
+                    theme = config.theme,
+                    turboActive = config.turboEnabled,
+                    bindingA = config.buttonA,
+                    bindingB = config.buttonB,
+                    bindingX = config.buttonX,
+                    bindingY = config.buttonY,
+                    onButtonDown = { binding ->
+                        triggerHaptic()
+                        onButtonDown(binding)
+                    },
+                    onButtonUp = onButtonUp
+                )
+            }
         }
     }
 }

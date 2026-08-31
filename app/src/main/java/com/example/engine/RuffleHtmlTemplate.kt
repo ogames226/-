@@ -43,6 +43,8 @@ object RuffleHtmlTemplate {
             justify-content: center;
             overflow: hidden;
             background-color: #080B11;
+            width: 100%;
+            height: 100%;
         }
 
         #player-container {
@@ -52,7 +54,9 @@ object RuffleHtmlTemplate {
             justify-content: center;
             width: 100%;
             height: 100%;
-            transition: all 0.2s ease-out;
+            max-width: 100vw;
+            max-height: 100vh;
+            background-color: #080B11;
         }
 
         /* Aspect ratio modes */
@@ -65,16 +69,12 @@ object RuffleHtmlTemplate {
             aspect-ratio: 4 / 3;
             max-width: 100%;
             max-height: 100%;
-            width: auto;
-            height: 100%;
         }
 
         .aspect-16-9 {
             aspect-ratio: 16 / 9;
             max-width: 100%;
             max-height: 100%;
-            width: 100%;
-            height: auto;
         }
 
         .aspect-stretch {
@@ -82,11 +82,19 @@ object RuffleHtmlTemplate {
             height: 100% !important;
         }
 
-        ruffle-player, ruffle-embed, canvas {
+        ruffle-player, ruffle-embed, #active-ruffle-player {
             width: 100% !important;
             height: 100% !important;
-            display: block;
+            display: block !important;
             outline: none;
+            position: absolute;
+            inset: 0;
+        }
+
+        ruffle-player::part(player), ruffle-player::part(canvas), ruffle-player canvas {
+            width: 100% !important;
+            height: 100% !important;
+            display: block !important;
         }
 
         /* Loading Screen */
@@ -101,12 +109,13 @@ object RuffleHtmlTemplate {
             z-index: 99;
             color: #F1F5F9;
             gap: 16px;
-            transition: opacity 0.4s ease-out;
+            transition: opacity 0.3s ease-out;
+            pointer-events: none;
         }
 
         .spinner {
-            width: 52px;
-            height: 52px;
+            width: 48px;
+            height: 48px;
             border: 4px solid rgba(255, 87, 34, 0.15);
             border-top: 4px solid #FF5722;
             border-right: 4px solid #00E5FF;
@@ -116,14 +125,18 @@ object RuffleHtmlTemplate {
 
         .loader-title {
             font-size: 16px;
-            font-weight: 600;
+            font-weight: 700;
             letter-spacing: 0.5px;
             color: #F1F5F9;
+            text-align: center;
+            padding: 0 16px;
         }
 
         .loader-sub {
             font-size: 12px;
             color: #94A3B8;
+            text-align: center;
+            padding: 0 16px;
         }
 
         @keyframes spin {
@@ -148,12 +161,12 @@ object RuffleHtmlTemplate {
             height: 100%;
         }
 
-        /* Fallback interactive canvas for instant demo execution */
+        /* Fallback interactive canvas for instant sandbox demos if CDN is offline */
         #fallback-canvas {
             display: none;
             width: 100%;
             height: 100%;
-            background: #0B0F19;
+            background: #080B11;
         }
     </style>
 
@@ -161,7 +174,8 @@ object RuffleHtmlTemplate {
     <script>
         window.RufflePlayer = window.RufflePlayer || {};
         window.RufflePlayer.config = {
-            letterbox: "on",
+            publicPath: "https://cdn.jsdelivr.net/npm/@ruffle-rs/ruffle@latest/",
+            polyfills: true,
             autoplay: "on",
             unmuteOverlay: "hidden",
             backgroundColor: "#080B11",
@@ -171,18 +185,36 @@ object RuffleHtmlTemplate {
             align: "center",
             forceScale: true,
             openUrlMode: "confirm",
-            allowScriptAccess: true
+            allowScriptAccess: true,
+            logLevel: "warn",
+            warnOnUnsupportedContent: false
         };
     </script>
-    <!-- Load Ruffle WebAssembly script with dynamic fallback -->
-    <script src="https://unpkg.com/@ruffle-rs/ruffle" onerror="onRuffleCdnFailed()"></script>
+    <!-- Primary Ruffle CDN (jsdelivr) with unpkg fallback -->
+    <script src="https://cdn.jsdelivr.net/npm/@ruffle-rs/ruffle@latest/ruffle.js" onerror="loadFallbackRuffleCdn()"></script>
+    <script>
+        function loadFallbackRuffleCdn() {
+            if (!window.RufflePlayer || !window.RufflePlayer.newest) {
+                console.warn("Primary CDN failed, loading unpkg Ruffle...");
+                if (window.RufflePlayer && window.RufflePlayer.config) {
+                    window.RufflePlayer.config.publicPath = "https://unpkg.com/@ruffle-rs/ruffle/";
+                }
+                const script = document.createElement('script');
+                script.src = "https://unpkg.com/@ruffle-rs/ruffle/ruffle.js";
+                script.onerror = function() {
+                    console.warn("All Ruffle CDNs failed or offline.");
+                };
+                document.head.appendChild(script);
+            }
+        }
+    </script>
 </head>
 <body>
     <div id="viewport-wrapper">
         <div id="player-container" class="$aspectRatioCssClass">
             <div id="loader-overlay">
                 <div class="spinner"></div>
-                <div class="loader-title">Ruffle Wasm Initializing</div>
+                <div class="loader-title">Ruffle Flash Wasm</div>
                 <div class="loader-sub">Preparing WebAssembly Flash sandbox...</div>
             </div>
             <!-- Canvas fallback for instant sandbox demos if CDN is offline -->
@@ -226,13 +258,9 @@ object RuffleHtmlTemplate {
             if (delta > 0) {
                 currentFps = Math.round(1 / delta);
             }
-            if (isLoaded) {
+            if (isLoaded && !isFallbackActive) {
                 requestAnimationFrame(updateFps);
             }
-        }
-
-        function onRuffleCdnFailed() {
-            console.warn("Ruffle CDN script failed or offline. Ready to use fallback engine.");
         }
 
         function hideLoader() {
@@ -241,7 +269,7 @@ object RuffleHtmlTemplate {
                 loader.style.opacity = "0";
                 setTimeout(() => {
                     loader.style.display = "none";
-                }, 400);
+                }, 300);
             }
         }
 
@@ -266,30 +294,65 @@ object RuffleHtmlTemplate {
             return bytes.buffer;
         }
 
-        // Public API called from Kotlin Bridge
-        window.loadSwfFromBase64 = async function(base64Data, filename) {
+        // Wait for Ruffle script to be available
+        function waitForRuffle(maxMs = 3500) {
+            return new Promise((resolve) => {
+                if (window.RufflePlayer && (typeof window.RufflePlayer.newest === 'function')) {
+                    resolve(window.RufflePlayer.newest());
+                    return;
+                }
+                const start = performance.now();
+                const interval = setInterval(() => {
+                    if (window.RufflePlayer && (typeof window.RufflePlayer.newest === 'function')) {
+                        clearInterval(interval);
+                        resolve(window.RufflePlayer.newest());
+                    } else if (performance.now() - start > maxMs) {
+                        clearInterval(interval);
+                        resolve(null);
+                    }
+                }, 100);
+            });
+        }
+
+        // Load SWF via intercepted local URL (fastest & handles large files)
+        window.loadSwfDirectUrl = async function(url, filename) {
             try {
-                showLoader("Loading Flash Game", filename || "Parsing SWF stream...");
-                
-                if (window.RufflePlayer && window.RufflePlayer.newest) {
-                    initRufflePlayer(base64Data, filename);
+                showLoader(filename || "Loading Game", "Initializing Flash WebAssembly runtime...");
+                const ruffleInst = await waitForRuffle();
+                if (ruffleInst) {
+                    await initRuffleWithSource(ruffleInst, { url: url || "https://ruffle.ai-studio.local/current_game.swf" }, filename);
                 } else {
-                    // Try polling for Ruffle for 2 seconds
-                    let attempts = 0;
-                    const pollInterval = setInterval(() => {
-                        attempts++;
-                        if (window.RufflePlayer && window.RufflePlayer.newest) {
-                            clearInterval(pollInterval);
-                            initRufflePlayer(base64Data, filename);
-                        } else if (attempts > 20) {
-                            clearInterval(pollInterval);
-                            console.log("Starting high-performance fallback engine for " + filename);
-                            startFallbackEngine(filename);
+                    console.warn("Ruffle unavailable for direct URL, checking fallback...");
+                    // Try getting base64 from AndroidBridge
+                    if (window.AndroidBridge && typeof window.AndroidBridge.getSwfBase64 === 'function') {
+                        const b64 = window.AndroidBridge.getSwfBase64();
+                        if (b64 && b64.length > 0) {
+                            window.loadSwfFromBase64(b64, filename);
+                            return;
                         }
-                    }, 100);
+                    }
+                    startFallbackEngine(filename);
                 }
             } catch (err) {
-                console.error("Error loading SWF:", err);
+                console.error("Error loading direct SWF:", err);
+                startFallbackEngine(filename);
+            }
+        };
+
+        // Public API called from Kotlin Bridge with Base64 payload
+        window.loadSwfFromBase64 = async function(base64Data, filename) {
+            try {
+                showLoader(filename || "Loading Game", "Decoding Flash SWF binary...");
+                const ruffleInst = await waitForRuffle();
+                if (ruffleInst) {
+                    const arrayBuffer = base64ToArrayBuffer(base64Data);
+                    await initRuffleWithSource(ruffleInst, { data: arrayBuffer, swfUrl: filename || "game.swf" }, filename);
+                } else {
+                    console.warn("Ruffle unavailable, starting built-in fallback engine for " + filename);
+                    startFallbackEngine(filename);
+                }
+            } catch (err) {
+                console.error("Error loading SWF from base64:", err);
                 if (window.AndroidBridge && typeof window.AndroidBridge.onPlayerError === 'function') {
                     window.AndroidBridge.onPlayerError(err.message || String(err));
                 }
@@ -297,31 +360,44 @@ object RuffleHtmlTemplate {
             }
         };
 
-        async function initRufflePlayer(base64Data, filename) {
+        async function initRuffleWithSource(ruffleInstance, loadSource, filename) {
             try {
-                ruffle = window.RufflePlayer.newest();
                 const container = document.getElementById("player-container");
                 
-                // Clear existing player
+                // Clear existing player if any
                 if (player && player.parentNode) {
-                    player.parentNode.removeChild(player);
+                    try {
+                        if (typeof player.pause === 'function') player.pause();
+                        player.parentNode.removeChild(player);
+                    } catch (_) {}
                 }
-                
-                player = ruffle.createPlayer();
+
+                // Hide fallback canvas
+                const canvas = document.getElementById("fallback-canvas");
+                if (canvas) canvas.style.display = "none";
+                if (fallbackAnimationId) {
+                    cancelAnimationFrame(fallbackAnimationId);
+                    fallbackAnimationId = null;
+                }
+                isFallbackActive = false;
+
+                player = ruffleInstance.createPlayer();
                 player.id = "active-ruffle-player";
                 player.style.width = "100%";
                 player.style.height = "100%";
                 container.appendChild(player);
 
-                const arrayBuffer = base64ToArrayBuffer(base64Data);
-
-                await player.load({
-                    data: arrayBuffer,
-                    swfUrl: filename || "game.swf",
+                const config = {
                     autoplay: "on",
                     backgroundColor: "#080B11",
-                    letterbox: "on"
-                });
+                    letterbox: "on",
+                    openUrlMode: "confirm",
+                    allowScriptAccess: true,
+                    unmuteOverlay: "hidden",
+                    ...loadSource
+                };
+
+                await player.load(config);
 
                 isLoaded = true;
                 hideLoader();
@@ -339,11 +415,10 @@ object RuffleHtmlTemplate {
                     );
                 }
 
-                // Add pointer and keyboard listeners
                 setupPlayerEventListeners();
 
             } catch (error) {
-                console.error("Ruffle load error:", error);
+                console.error("Ruffle init error:", error);
                 startFallbackEngine(filename);
             }
         }
@@ -372,7 +447,7 @@ object RuffleHtmlTemplate {
                 window.dispatchEvent(evt);
                 document.dispatchEvent(evt);
 
-                // Also forward to fallback engine if active
+                // Forward to fallback engine if active
                 if (isFallbackActive && window.fallbackGameInstance) {
                     if (eventType === 'keydown') {
                         window.fallbackGameInstance.onKeyDown(keyCode, key);
@@ -479,7 +554,6 @@ object RuffleHtmlTemplate {
             canvas.style.display = "block";
             const ctx = canvas.getContext("2d");
 
-            // Resize canvas to container
             function resizeCanvas() {
                 canvas.width = canvas.parentElement.clientWidth || 800;
                 canvas.height = canvas.parentElement.clientHeight || 600;
@@ -487,16 +561,15 @@ object RuffleHtmlTemplate {
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
 
-            // Game instance based on title
             const lowerName = (filename || "").toLowerCase();
-            if (lowerName.includes("space") || lowerName.includes("blitz")) {
+            if (lowerName.includes("space") || lowerName.includes("blitz") || lowerName.includes("astro")) {
                 window.fallbackGameInstance = new SpaceBlitzGame(canvas, ctx);
-            } else if (lowerName.includes("snake")) {
+            } else if (lowerName.includes("snake") || lowerName.includes("worm")) {
                 window.fallbackGameInstance = new SnakeGame(canvas, ctx);
-            } else if (lowerName.includes("pong")) {
+            } else if (lowerName.includes("pong") || lowerName.includes("paddle") || lowerName.includes("table")) {
                 window.fallbackGameInstance = new PongGame(canvas, ctx);
             } else {
-                window.fallbackGameInstance = new VectorMatrixBenchmark(canvas, ctx);
+                window.fallbackGameInstance = new SpaceBlitzGame(canvas, ctx);
             }
 
             if (window.AndroidBridge && typeof window.AndroidBridge.onPlayerLoaded === 'function') {
@@ -504,12 +577,12 @@ object RuffleHtmlTemplate {
             }
 
             function loop() {
-                if (window.fallbackGameInstance) {
+                if (window.fallbackGameInstance && isFallbackActive) {
                     window.fallbackGameInstance.update();
                     window.fallbackGameInstance.render();
+                    updateFps();
+                    fallbackAnimationId = requestAnimationFrame(loop);
                 }
-                updateFps();
-                fallbackAnimationId = requestAnimationFrame(loop);
             }
             loop();
         }
@@ -555,7 +628,6 @@ object RuffleHtmlTemplate {
 
             onMouseEvent(type, x, y) {
                 if (type === 'mousedown') this.fireBullet();
-                // Aim towards touch
                 const dx = x - this.ship.x;
                 const dy = y - this.ship.y;
                 this.ship.angle = Math.atan2(dy, dx);
@@ -576,13 +648,11 @@ object RuffleHtmlTemplate {
             }
 
             update() {
-                // Controls: 37/Left, 39/Right, 38/Up, 40/Down
                 if (this.keys[37] || this.keys['ArrowLeft'] || this.keys['a']) this.ship.angle -= 0.08;
                 if (this.keys[39] || this.keys['ArrowRight'] || this.keys['d']) this.ship.angle += 0.08;
                 if (this.keys[38] || this.keys['ArrowUp'] || this.keys['w']) {
                     this.ship.vx += Math.cos(this.ship.angle) * 0.25;
                     this.ship.vy += Math.sin(this.ship.angle) * 0.25;
-                    // Exhaust particles
                     this.particles.push({
                         x: this.ship.x - Math.cos(this.ship.angle) * 15,
                         y: this.ship.y - Math.sin(this.ship.angle) * 15,
@@ -597,13 +667,11 @@ object RuffleHtmlTemplate {
                 this.ship.x += this.ship.vx;
                 this.ship.y += this.ship.vy;
 
-                // Screen wrap
                 if (this.ship.x < 0) this.ship.x = this.canvas.width;
                 if (this.ship.x > this.canvas.width) this.ship.x = 0;
                 if (this.ship.y < 0) this.ship.y = this.canvas.height;
                 if (this.ship.y > this.canvas.height) this.ship.y = 0;
 
-                // Update bullets
                 for (let i = this.bullets.length - 1; i >= 0; i--) {
                     const b = this.bullets[i];
                     b.x += b.vx;
@@ -613,14 +681,11 @@ object RuffleHtmlTemplate {
                         this.bullets.splice(i, 1);
                         continue;
                     }
-                    // Check collision with asteroids
                     for (let j = this.asteroids.length - 1; j >= 0; j--) {
                         const ast = this.asteroids[j];
                         const dist = Math.hypot(b.x - ast.x, b.y - ast.y);
                         if (dist < ast.radius) {
-                            // Hit!
                             this.score += 100;
-                            // Explosion particles
                             for (let p = 0; p < 12; p++) {
                                 this.particles.push({
                                     x: ast.x, y: ast.y,
@@ -637,7 +702,6 @@ object RuffleHtmlTemplate {
                     }
                 }
 
-                // Update asteroids
                 this.asteroids.forEach(a => {
                     a.x += a.vx;
                     a.y += a.vy;
@@ -647,7 +711,6 @@ object RuffleHtmlTemplate {
                     if (a.y > this.canvas.height) a.y = 0;
                 });
 
-                // Update particles
                 for (let i = this.particles.length - 1; i >= 0; i--) {
                     const p = this.particles[i];
                     p.x += p.vx;
@@ -662,7 +725,6 @@ object RuffleHtmlTemplate {
                 ctx.fillStyle = '#080B11';
                 ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-                // Grid background
                 ctx.strokeStyle = 'rgba(255,255,255,0.04)';
                 ctx.lineWidth = 1;
                 const gridSize = 40;
@@ -673,7 +735,6 @@ object RuffleHtmlTemplate {
                     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(this.canvas.width, y); ctx.stroke();
                 }
 
-                // Draw asteroids
                 ctx.strokeStyle = '#00E5FF';
                 ctx.lineWidth = 2;
                 this.asteroids.forEach(a => {
@@ -682,7 +743,6 @@ object RuffleHtmlTemplate {
                     ctx.stroke();
                 });
 
-                // Draw bullets
                 ctx.fillStyle = '#FFEA00';
                 this.bullets.forEach(b => {
                     ctx.beginPath();
@@ -690,13 +750,11 @@ object RuffleHtmlTemplate {
                     ctx.fill();
                 });
 
-                // Draw particles
                 this.particles.forEach(p => {
                     ctx.fillStyle = p.color;
                     ctx.fillRect(p.x, p.y, 2, 2);
                 });
 
-                // Draw Ship
                 ctx.save();
                 ctx.translate(this.ship.x, this.ship.y);
                 ctx.rotate(this.ship.angle);
@@ -713,7 +771,6 @@ object RuffleHtmlTemplate {
                 ctx.stroke();
                 ctx.restore();
 
-                // HUD
                 ctx.fillStyle = '#FFFFFF';
                 ctx.font = 'bold 16px sans-serif';
                 ctx.fillText('SCORE: ' + this.score, 20, 30);
@@ -743,42 +800,34 @@ object RuffleHtmlTemplate {
             onMouseEvent(type, x, y) { this.p1Y = y - this.paddleH / 2; }
 
             update() {
-                // Controls
                 if (this.keys[38] || this.keys['ArrowUp'] || this.keys['w']) this.p1Y -= 7;
                 if (this.keys[40] || this.keys['ArrowDown'] || this.keys['s']) this.p1Y += 7;
 
-                // Clamp P1
                 this.p1Y = Math.max(10, Math.min(this.canvas.height - this.paddleH - 10, this.p1Y));
 
-                // AI P2
                 const p2Center = this.p2Y + this.paddleH / 2;
                 if (p2Center < this.ball.y - 15) this.p2Y += 4.5;
                 else if (p2Center > this.ball.y + 15) this.p2Y -= 4.5;
                 this.p2Y = Math.max(10, Math.min(this.canvas.height - this.paddleH - 10, this.p2Y));
 
-                // Ball movement
                 this.ball.x += this.ball.vx;
                 this.ball.y += this.ball.vy;
 
-                // Ball bounce top/bottom
                 if (this.ball.y < 10 || this.ball.y > this.canvas.height - 10) {
                     this.ball.vy *= -1;
                 }
 
-                // Bounce P1
                 if (this.ball.x - this.ball.radius < 30 + this.paddleW &&
                     this.ball.y >= this.p1Y && this.ball.y <= this.p1Y + this.paddleH) {
                     this.ball.vx = Math.abs(this.ball.vx) * 1.05;
                     this.ball.vy += (this.ball.y - (this.p1Y + this.paddleH / 2)) * 0.1;
                 }
 
-                // Bounce P2
                 if (this.ball.x + this.ball.radius > this.canvas.width - 30 - this.paddleW &&
                     this.ball.y >= this.p2Y && this.ball.y <= this.p2Y + this.paddleH) {
                     this.ball.vx = -Math.abs(this.ball.vx) * 1.05;
                 }
 
-                // Scores
                 if (this.ball.x < 0) {
                     this.p2Score++;
                     this.resetBall();
@@ -800,7 +849,6 @@ object RuffleHtmlTemplate {
                 ctx.fillStyle = '#080B11';
                 ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-                // Center dashed line
                 ctx.strokeStyle = '#222C44';
                 ctx.setLineDash([8, 8]);
                 ctx.beginPath();
@@ -809,19 +857,16 @@ object RuffleHtmlTemplate {
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // Paddles
                 ctx.fillStyle = '#FF5722';
                 ctx.fillRect(30, this.p1Y, this.paddleW, this.paddleH);
                 ctx.fillStyle = '#00E5FF';
                 ctx.fillRect(this.canvas.width - 30 - this.paddleW, this.p2Y, this.paddleW, this.paddleH);
 
-                // Ball
                 ctx.fillStyle = '#FFEA00';
                 ctx.beginPath();
                 ctx.arc(this.ball.x, this.ball.y, this.ball.radius, 0, Math.PI * 2);
                 ctx.fill();
 
-                // Scores
                 ctx.font = 'bold 36px monospace';
                 ctx.fillStyle = '#FF5722';
                 ctx.fillText(this.p1Score, this.canvas.width / 2 - 60, 50);
@@ -886,13 +931,11 @@ object RuffleHtmlTemplate {
                 ctx.fillStyle = '#080B11';
                 ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-                // Food
                 ctx.fillStyle = '#FF5722';
                 ctx.beginPath();
                 ctx.arc(this.food.x * this.grid + this.grid/2, this.food.y * this.grid + this.grid/2, this.grid/2 - 2, 0, Math.PI*2);
                 ctx.fill();
 
-                // Snake
                 this.snake.forEach((s, i) => {
                     ctx.fillStyle = i === 0 ? '#00E5FF' : '#0097A7';
                     ctx.fillRect(s.x * this.grid + 1, s.y * this.grid + 1, this.grid - 2, this.grid - 2);
@@ -901,87 +944,6 @@ object RuffleHtmlTemplate {
                 ctx.fillStyle = '#FFFFFF';
                 ctx.font = 'bold 16px sans-serif';
                 ctx.fillText('CYBER SNAKE - SCORE: ' + this.score, 20, 30);
-            }
-        }
-
-        // --- Vector Matrix Benchmark ---
-        class VectorMatrixBenchmark {
-            constructor(canvas, ctx) {
-                this.canvas = canvas;
-                this.ctx = ctx;
-                this.particles = [];
-                for (let i = 0; i < 120; i++) {
-                    this.particles.push({
-                        x: Math.random() * canvas.width,
-                        y: Math.random() * canvas.height,
-                        vx: (Math.random() - 0.5) * 2,
-                        vy: (Math.random() - 0.5) * 2,
-                        radius: 2 + Math.random() * 3,
-                        color: ['#FF5722', '#00E5FF', '#FFEA00', '#7C4DFF'][Math.floor(Math.random() * 4)]
-                    });
-                }
-            }
-            onKeyDown() {}
-            onKeyUp() {}
-            onMouseEvent(t, x, y) {
-                this.particles.forEach(p => {
-                    const dx = p.x - x;
-                    const dy = p.y - y;
-                    const d = Math.hypot(dx, dy);
-                    if (d < 120 && d > 0) {
-                        p.vx += (dx / d) * 3;
-                        p.vy += (dy / d) * 3;
-                    }
-                });
-            }
-
-            update() {
-                this.particles.forEach(p => {
-                    p.x += p.vx;
-                    p.y += p.vy;
-                    p.vx *= 0.99;
-                    p.vy *= 0.99;
-                    if (p.x < 0 || p.x > this.canvas.width) p.vx *= -1;
-                    if (p.y < 0 || p.y > this.canvas.height) p.vy *= -1;
-                });
-            }
-
-            render() {
-                const ctx = this.ctx;
-                ctx.fillStyle = 'rgba(8, 11, 17, 0.2)';
-                ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-                // Connect lines
-                ctx.lineWidth = 0.5;
-                for (let i = 0; i < this.particles.length; i++) {
-                    for (let j = i + 1; j < this.particles.length; j++) {
-                        const p1 = this.particles[i];
-                        const p2 = this.particles[j];
-                        const d = Math.hypot(p1.x - p2.x, p1.y - p2.y);
-                        if (d < 80) {
-                            ctx.strokeStyle = "rgba(0, 229, 255, " + (1 - d / 80) + ")";
-                            ctx.beginPath();
-                            ctx.moveTo(p1.x, p1.y);
-                            ctx.lineTo(p2.x, p2.y);
-                            ctx.stroke();
-                        }
-                    }
-                }
-
-                // Draw dots
-                this.particles.forEach(p => {
-                    ctx.fillStyle = p.color;
-                    ctx.beginPath();
-                    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-                    ctx.fill();
-                });
-
-                ctx.fillStyle = '#F1F5F9';
-                ctx.font = 'bold 18px monospace';
-                ctx.fillText('RUFFLE WASM VECTOR MATRIX', 20, 35);
-                ctx.fillStyle = '#94A3B8';
-                ctx.font = '12px monospace';
-                ctx.fillText('Interactive Particle & ActionScript Benchmark', 20, 55);
             }
         }
     </script>

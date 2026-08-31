@@ -12,7 +12,8 @@ class FlashJsBridge(
     private val context: Context,
     private val onLoaded: (title: String, width: Int, height: Int, frameRate: Double, totalFrames: Int) -> Unit = { _, _, _, _, _ -> },
     private val onError: (message: String) -> Unit = {},
-    private val onFps: (fps: Int) -> Unit = {}
+    private val onFps: (fps: Int) -> Unit = {},
+    private val base64Supplier: () -> String = { "" }
 ) {
     private val TAG = "FlashJsBridge"
 
@@ -24,6 +25,11 @@ class FlashJsBridge(
             @Suppress("DEPRECATION")
             context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
         }
+    }
+
+    @JavascriptInterface
+    fun getSwfBase64(): String {
+        return base64Supplier()
     }
 
     @JavascriptInterface

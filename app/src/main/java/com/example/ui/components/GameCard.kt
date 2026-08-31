@@ -28,9 +28,12 @@ fun GameCard(
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
     onDelete: () -> Unit,
+    onRename: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var editedTitle by remember(game.title) { mutableStateOf(game.title) }
 
     Surface(
         shape = RoundedCornerShape(24.dp),
@@ -86,7 +89,7 @@ fun GameCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
-                        text = game.title,
+                        text = game.title.ifEmpty { "Flash Game" },
                         color = TextPrimary,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
@@ -184,6 +187,19 @@ fun GameCard(
                                 Icon(Icons.Default.PlayArrow, contentDescription = null, tint = BentoLilac)
                             }
                         )
+                        if (!game.isBuiltIn) {
+                            DropdownMenuItem(
+                                text = { Text("Rename Game", color = TextPrimary) },
+                                onClick = {
+                                    showMenu = false
+                                    editedTitle = game.title
+                                    showRenameDialog = true
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Edit, contentDescription = null, tint = BentoLilac)
+                                }
+                            )
+                        }
                         DropdownMenuItem(
                             text = {
                                 Text(if (game.isFavorite) "Remove from Favorites" else "Add to Favorites", color = TextPrimary)
@@ -217,6 +233,47 @@ fun GameCard(
                 }
             }
         }
+    }
+
+    if (showRenameDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("Edit Game Name", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = editedTitle,
+                    onValueChange = { editedTitle = it },
+                    label = { Text("Game Name") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = BentoLilac,
+                        unfocusedBorderColor = BentoBorder,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    )
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (editedTitle.isNotBlank()) {
+                            onRename(editedTitle.trim())
+                        }
+                        showRenameDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BentoLilac, contentColor = BentoLilacDark)
+                ) {
+                    Text("Save", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            },
+            containerColor = BentoSurfaceElevated,
+            shape = RoundedCornerShape(24.dp)
+        )
     }
 }
 

@@ -73,11 +73,48 @@ class FlashGameRepository(
         }
     }
 
+    suspend fun updateGameTitle(id: Long, newTitle: String) = withContext(Dispatchers.IO) {
+        if (id > 0) {
+            val entity = dao.getGameById(id)
+            if (entity != null) {
+                dao.updateGame(entity.copy(title = newTitle.trim().ifEmpty { entity.title }))
+            }
+        }
+    }
+
+    /**
+     * Cleans a raw filename into a human-readable, formatted game title.
+     * Supports English, Arabic, numbers, and symbols without mangling.
+     */
+    fun cleanGameTitle(originalName: String): String {
+        var name = originalName
+        if (name.contains("%")) {
+            try {
+                name = java.net.URLDecoder.decode(name, "UTF-8")
+            } catch (_: Exception) {}
+        }
+        if (name.endsWith(".swf", ignoreCase = true) || name.endsWith(".exe", ignoreCase = true)) {
+            name = name.substring(0, name.length - 4)
+        }
+
+        // Replace hyphens, underscores, and dots with spaces
+        name = name.replace("[-_.]+".toRegex(), " ").trim()
+
+        // Capitalize words if ASCII
+        val words = name.split("\\s+".toRegex()).filter { it.isNotEmpty() }
+        val formatted = words.joinToString(" ") { word ->
+            if (word.isNotEmpty()) word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            else ""
+        }
+
+        return formatted.ifEmpty { "Flash Game" }
+    }
+
     /**
      * Imports a user-selected URI (from SAF or Intent) into the app's internal game storage.
      * Parses EXE if necessary to extract embedded SWF.
      */
-    suspend fun importGameFromUri(uri: Uri, originalName: String): Result<FlashGame> = withContext(Dispatchers.IO) {
+    suspend fun importGameFromUri(uri: Uri, originalName: String, customTitle: String? = null): Result<FlashGame> = withContext(Dispatchers.IO) {
         try {
             val inputStream = context.contentResolver.openInputStream(uri)
                 ?: return@withContext Result.failure(Exception("Cannot open stream for URI: $uri"))
@@ -96,10 +133,8 @@ class FlashGameRepository(
                 )
             }
 
-            // Save extracted SWF into app internal files storage
-            val safeName = originalName.replace("[^a-zA-Z0-9._-]".toRegex(), "_")
-            val baseName = if (safeName.contains(".")) safeName.substringBeforeLast(".") else safeName
-            val targetFileName = "${baseName}_${System.currentTimeMillis()}.swf"
+            // Save extracted SWF into app internal files storage with safe ASCII filename on disk
+            val targetFileName = "game_${System.currentTimeMillis()}.swf"
             val gamesDir = File(context.filesDir, "flash_games").apply { mkdirs() }
             val targetFile = File(gamesDir, targetFileName)
 
@@ -107,18 +142,19 @@ class FlashGameRepository(
                 fos.write(extracted.swfBytes)
             }
 
-            val gameTitle = baseName.replace("_", " ").trim()
-                .split(" ")
-                .filter { it.isNotEmpty() }
-                .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+            val gameTitle = if (!customTitle.isNullOrBlank()) {
+                customTitle.trim()
+            } else {
+                cleanGameTitle(originalName)
+            }
 
             val game = FlashGame(
-                title = gameTitle.ifEmpty { "Flash Game" },
+                title = gameTitle,
                 description = if (isExe) "Flash Projector EXE (Flash v${extracted.flashVersion}, ${extracted.compressionType})"
                 else "Flash SWF (Flash v${extracted.flashVersion}, ${extracted.compressionType})",
                 fileUri = Uri.fromFile(targetFile).toString(),
                 filePath = targetFile.absolutePath,
-                fileName = targetFileName,
+                fileName = originalName,
                 fileType = if (isExe) "EXE" else "SWF",
                 fileSize = extracted.swfBytes.size.toLong(),
                 isFavorite = false,
@@ -134,9 +170,9 @@ class FlashGameRepository(
     }
 
     /**
-     * Reads the SWF bytes for a given game (whether built-in, local file, or uri) and returns base64.
+     * Reads the raw SWF bytes for a given game.
      */
-    suspend fun getGameSwfBase64(game: FlashGame): String = withContext(Dispatchers.IO) {
+    suspend fun getGameSwfBytes(game: FlashGame): ByteArray = withContext(Dispatchers.IO) {
         val bytes = if (game.isBuiltIn && game.builtInSampleKey != null) {
             BuiltInSampleGames.getSampleSwfBytes(game.builtInSampleKey)
         } else if (game.filePath.isNotEmpty()) {
@@ -152,14 +188,19 @@ class FlashGameRepository(
             }
         }
 
-        // Validate or extract if it was an unparsed EXE
-        val finalBytes = if (FlashExeParser.isWindowsExe(bytes)) {
+        if (FlashExeParser.isWindowsExe(bytes)) {
             val extracted = FlashExeParser.extractSwfFromBytes(bytes)
             extracted.swfBytes ?: bytes
         } else {
             bytes
         }
+    }
 
+    /**
+     * Reads the SWF bytes for a given game (whether built-in, local file, or uri) and returns base64.
+     */
+    suspend fun getGameSwfBase64(game: FlashGame): String = withContext(Dispatchers.IO) {
+        val finalBytes = getGameSwfBytes(game)
         Base64.encodeToString(finalBytes, Base64.NO_WRAP)
     }
 }

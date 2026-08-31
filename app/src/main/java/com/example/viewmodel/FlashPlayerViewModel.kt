@@ -43,6 +43,7 @@ enum class GameFilter {
 
 data class ActivePlayerState(
     val game: FlashGame? = null,
+    val swfBytes: ByteArray? = null,
     val swfBase64: String? = null,
     val isLoaded: Boolean = false,
     val currentFps: Int = 60,
@@ -110,6 +111,10 @@ class FlashPlayerViewModel(application: Application) : AndroidViewModel(applicat
     private val _playerState = MutableStateFlow(ActivePlayerState())
     val playerState: StateFlow<ActivePlayerState> = _playerState.asStateFlow()
 
+    fun cleanGameTitle(originalName: String): String {
+        return repository.cleanGameTitle(originalName)
+    }
+
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
     }
@@ -122,16 +127,25 @@ class FlashPlayerViewModel(application: Application) : AndroidViewModel(applicat
         _userMessage.value = null to false
     }
 
-    fun importGameFromUri(uri: Uri, displayName: String) {
+    fun importGameFromUri(uri: Uri, displayName: String, customTitle: String? = null) {
         viewModelScope.launch {
             _isImporting.value = true
-            val result = repository.importGameFromUri(uri, displayName)
+            val result = repository.importGameFromUri(uri, displayName, customTitle)
             _isImporting.value = false
 
             result.onSuccess { game ->
                 _userMessage.value = "Imported '${game.title}' (${game.fileType}) successfully!" to false
             }.onFailure { error ->
                 _userMessage.value = (error.message ?: "Failed to import game") to true
+            }
+        }
+    }
+
+    fun updateGameTitle(game: FlashGame, newTitle: String) {
+        viewModelScope.launch {
+            if (game.id > 0) {
+                repository.updateGameTitle(game.id, newTitle)
+                _userMessage.value = "Updated name to '$newTitle'" to false
             }
         }
     }
@@ -184,10 +198,11 @@ class FlashPlayerViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             try {
-                val b64 = repository.getGameSwfBase64(game)
-                _playerState.update { it.copy(swfBase64 = b64) }
+                val bytes = repository.getGameSwfBytes(game)
+                val b64 = if (bytes.size < 3_000_000) repository.getGameSwfBase64(game) else null
+                _playerState.update { it.copy(swfBytes = bytes, swfBase64 = b64) }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed preparing SWF base64", e)
+                Log.e(TAG, "Failed preparing SWF bytes", e)
                 _playerState.update { it.copy(errorMessage = "Failed to load game stream: ${e.message}") }
             }
         }

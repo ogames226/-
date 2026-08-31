@@ -62,13 +62,33 @@ fun LibraryScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri != null) {
-            var displayName = "game.swf"
-            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                if (nameIndex != -1 && cursor.moveToFirst()) {
-                    displayName = cursor.getString(nameIndex)
+            var displayName = ""
+            try {
+                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (nameIndex != -1 && cursor.moveToFirst()) {
+                        val name = cursor.getString(nameIndex)
+                        if (!name.isNullOrBlank()) {
+                            displayName = name
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+
+            if (displayName.isBlank()) {
+                val lastPath = uri.lastPathSegment
+                if (!lastPath.isNullOrBlank()) {
+                    val raw = lastPath.substringAfterLast("/").substringAfterLast(":")
+                    if (raw.isNotBlank()) {
+                        displayName = raw
+                    }
                 }
             }
+
+            if (displayName.isBlank()) {
+                displayName = "game.swf"
+            }
+
             viewModel.importGameFromUri(uri, displayName)
         }
     }
@@ -311,7 +331,8 @@ fun LibraryScreen(
                             onLaunchGame(game)
                         },
                         onToggleFavorite = { viewModel.toggleFavorite(game) },
-                        onDelete = { viewModel.deleteGame(game) }
+                        onDelete = { viewModel.deleteGame(game) },
+                        onRename = { newTitle -> viewModel.updateGameTitle(game, newTitle) }
                     )
                 }
             }
