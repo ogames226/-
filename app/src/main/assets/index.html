@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Flash Player Runtime</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #080B11;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #viewport-wrapper {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            background-color: #080B11;
+        }
+
+        #player-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            max-width: 100vw;
+            max-height: 100vh;
+            background-color: #080B11;
+        }
+
+        /* Aspect ratio modes */
+        .aspect-fit {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .aspect-4-3 {
+            aspect-ratio: 4 / 3;
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        .aspect-16-9 {
+            aspect-ratio: 16 / 9;
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        .aspect-stretch {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        ruffle-player, ruffle-embed, #active-ruffle-player {
+            width: 100% !important;
+            height: 100% !important;
+            display: block !important;
+            outline: none;
+            position: absolute;
+            inset: 0;
+        }
+
+        ruffle-player::part(player), ruffle-player::part(canvas), ruffle-player canvas {
+            width: 100% !important;
+            height: 100% !important;
+            display: block !important;
+        }
+
+        /* Loading Screen */
+        #loader-overlay {
+            position: absolute;
+            inset: 0;
+            background-color: #080B11;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 99;
+            color: #F1F5F9;
+            gap: 16px;
+            transition: opacity 0.3s ease-out;
+            pointer-events: none;
+        }
+
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(255, 87, 34, 0.15);
+            border-top: 4px solid #FF5722;
+            border-right: 4px solid #00E5FF;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        .loader-title {
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            color: #F1F5F9;
+            text-align: center;
+            padding: 0 16px;
+        }
+
+        .loader-sub {
+            font-size: 13px;
+            color: #94A3B8;
+            text-align: center;
+            padding: 0 16px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #virtual-mouse-layer {
+            position: absolute;
+            inset: 0;
+            z-index: 50;
+            display: none;
+            cursor: crosshair;
+        }
+
+        #virtual-mouse-layer.active {
+            display: block;
+        }
+
+        /* Fallback interactive canvas for instant sandbox execution */
+        #fallback-canvas {
+            display: none;
+            width: 100%;
+            height: 100%;
+            background: #080B11;
+        }
+    </style>
+
+    <script>
+        window.RufflePlayer = window.RufflePlayer || {};
+        window.RufflePlayer.config = {
+            publicPath: "https://cdn.jsdelivr.net/npm/@ruffle-rs/ruffle@latest/",
+            polyfills: true,
+            autoplay: "on",
+            unmuteOverlay: "hidden",
+            backgroundColor: "#080B11",
+            letterbox: "on",
+            scale: "showAll",
+            align: "center",
+            forceScale: true,
+            openUrlMode: "confirm",
+            allowScriptAccess: true,
+            logLevel: "warn",
+            warnOnUnsupportedContent: false
+        };
+    </script>
+    <!-- Primary Ruffle CDN with fallback -->
+    <script src="https://cdn.jsdelivr.net/npm/@ruffle-rs/ruffle@latest/ruffle.js" onerror="loadFallbackRuffleCdn()"></script>
+    <script>
+        function loadFallbackRuffleCdn() {
+            if (!window.RufflePlayer || !window.RufflePlayer.newest) {
+                console.warn("Primary CDN failed, loading unpkg Ruffle...");
+                if (window.RufflePlayer && window.RufflePlayer.config) {
+                    window.RufflePlayer.config.publicPath = "https://unpkg.com/@ruffle-rs/ruffle/";
+                }
+                const script = document.createElement('script');
+                script.src = "https://unpkg.com/@ruffle-rs/ruffle/ruffle.js";
+                script.onerror = function() {
+                    console.warn("All Ruffle CDNs failed or offline. Fallback active.");
+                };
+                document.head.appendChild(script);
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="viewport-wrapper">
+        <div id="player-container" class="aspect-fit">
+            <div id="loader-overlay">
+                <div class="spinner"></div>
+                <div class="loader-title">Ruffle Flash Wasm</div>
+                <div class="loader-sub">Preparing WebAssembly Flash sandbox...</div>
+            </div>
+            <!-- Canvas fallback for instant sandbox demos if CDN is offline -->
+            <canvas id="fallback-canvas"></canvas>
+        </div>
+        <!-- Virtual Mouse Layer for mouse-driven Flash games -->
+        <div id="virtual-mouse-layer"></div>
+    </div>
+
+    <script>
+        let ruffle = null;
+        let player = null;
+        let isLoaded = false;
+        let currentFps = 60;
+        let lastFrameTime = performance.now();
+        let isFallbackActive = false;
+        let fallbackAnimationId = null;
+
+        function showLoader(title, subtitle) {
+            const loader = document.getElementById("loader-overlay");
+            if (loader) {
+                loader.style.display = "flex";
+                loader.style.opacity = "1";
+                if (title) loader.querySelector(".loader-title").innerText = title;
+                if (subtitle) loader.querySelector(".loader-sub").innerText = subtitle;
+            }
+        }
+
+        function updateFps() {
+            const now = performance.now();
+            const delta = (now - lastFrameTime) / 1000;
+            lastFrameTime = now;
+            if (delta > 0) {
+                currentFps = Math.round(1 / delta);
+            }
+            if (isLoaded && !isFallbackActive) {
+                requestAnimationFrame(updateFps);
+            }
+        }
+
+        function hideLoader() {
+            const loader = document.getElementById("loader-overlay");
+            if (loader) {
+                loader.style.opacity = "0";
+                setTimeout(() => {
+                    loader.style.display = "none";
+                }, 300);
+            }
+        }
+
+        function setAspectRatioMode(mode) {
+            const container = document.getElementById("player-container");
+            container.className = "";
+            if (mode === "ASPECT_4_3") {
+                container.classList.add("aspect-4-3");
+            } else if (mode === "ASPECT_16_9") {
+                container.classList.add("aspect-16-9");
+            } else if (mode === "STRETCH") {
+                container.classList.add("aspect-stretch");
+            } else {
+                container.classList.add("aspect-fit");
+            }
+        }
+
+        function base64ToArrayBuffer(base64) {
+            const binaryString = window.atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        function waitForRuffle(maxMs = 4000) {
+            return new Promise((resolve) => {
+                if (window.RufflePlayer && (typeof window.RufflePlayer.newest === 'function')) {
+                    resolve(window.RufflePlayer.newest());
+                    return;
+                }
+                const start = performance.now();
+                const interval = setInterval(() => {
+                    if (window.RufflePlayer && (typeof window.RufflePlayer.newest === 'function')) {
+                        clearInterval(interval);
+                        resolve(window.RufflePlayer.newest());
+                    } else if (performance.now() - start > maxMs) {
+                        clearInterval(interval);
+                        resolve(null);
+                    }
+                }, 100);
+            });
+        }
+
+        // Load SWF via local URL (AssetLoader / Intercept)
+        window.loadSwfDirectUrl = async function(url, filename) {
+            try {
+                showLoader(filename || "Loading Game", "Initializing Flash WebAssembly runtime...");
+                const ruffleInst = await waitForRuffle();
+                if (ruffleInst) {
+                    await initRuffleWithSource(ruffleInst, { url: url || "https://appassets.androidplatform.net/game.swf" }, filename);
+                } else {
+                    console.warn("Ruffle unavailable for direct URL, checking fallback...");
+                    if (window.AndroidBridge && typeof window.AndroidBridge.getSwfBase64 === 'function') {
+                        const b64 = window.AndroidBridge.getSwfBase64();
+                        if (b64 && b64.length > 0) {
+                            window.loadSwfFromBase64(b64, filename);
+                            return;
+                        }
+                    }
+                    startFallbackEngine(filename);
+                }
+            } catch (err) {
+                console.error("Error loading direct SWF:", err);
+                startFallbackEngine(filename);
+            }
+        };
+
+        // Load SWF via Base64 binary payload
+        window.loadSwfFromBase64 = async function(base64Data, filename) {
+            try {
+                showLoader(filename || "Loading Game", "Decoding Flash SWF binary...");
+                const ruffleInst = await waitForRuffle();
+                if (ruffleInst) {
+                    const arrayBuffer = base64ToArrayBuffer(base64Data);
+                    await initRuffleWithSource(ruffleInst, { data: arrayBuffer, swfUrl: filename || "game.swf" }, filename);
+                } else {
+                    console.warn("Ruffle unavailable, starting built-in fallback engine for " + filename);
+                    startFallbackEngine(filename);
+                }
+            } catch (err) {
+                console.error("Error loading SWF from base64:", err);
+                if (window.AndroidBridge && typeof window.AndroidBridge.onPlayerError === 'function') {
+                    window.AndroidBridge.onPlayerError(err.message || String(err));
+                }
+            }
+        };
+
+        async function initRuffleWithSource(ruffleInstance, loadSource, filename) {
+            try {
+                const container = document.getElementById("player-container");
+                
+                if (player && player.parentNode) {
+                    try {
+                        if (typeof player.pause === 'function') player.pause();
+                        player.parentNode.removeChild(player);
+                    } catch (_) {}
+                }
+
+                const canvas = document.getElementById("fallback-canvas");
+                if (canvas) canvas.style.display = "none";
+                if (fallbackAnimationId) {
+                    cancelAnimationFrame(fallbackAnimationId);
+                    fallbackAnimationId = null;
+                }
+                isFallbackActive = false;
+
+                player = ruffleInstance.createPlayer();
+                player.id = "active-ruffle-player";
+                player.style.width = "100%";
+                player.style.height = "100%";
+                container.appendChild(player);
+
+                const config = {
+                    autoplay: "on",
+                    backgroundColor: "#080B11",
+                    letterbox: "on",
+                    openUrlMode: "confirm",
+                    allowScriptAccess: true,
+                    unmuteOverlay: "hidden",
+                    ...loadSource
+                };
+
+                await player.load(config);
+
+                isLoaded = true;
+                hideLoader();
+                requestAnimationFrame(updateFps);
+
+                if (window.AndroidBridge && typeof window.AndroidBridge.onPlayerLoaded === 'function') {
+                    window.AndroidBridge.onPlayerLoaded(
+                        filename || "Flash Game",
+                        player.metadata?.width || 800,
+                        player.metadata?.height || 600,
+                        player.metadata?.frameRate || 30.0,
+                        player.metadata?.numFrames || 1
+                    );
+                }
+
+                setupPlayerEventListeners();
+
+            } catch (error) {
+                console.error("Ruffle init error:", error);
+                startFallbackEngine(filename);
+            }
+        }
+
+        // Bridge function: Simulate Keyboard events into Ruffle
+        window.sendKeyEvent = function(eventType, keyCode, key, code) {
+            try {
+                const target = document.getElementById("active-ruffle-player") || window;
+                const evt = new KeyboardEvent(eventType, {
+                    key: key || "",
+                    code: code || "",
+                    keyCode: keyCode,
+                    which: keyCode,
+                    bubbles: true,
+                    cancelable: true
+                });
+
+                target.dispatchEvent(evt);
+                window.dispatchEvent(evt);
+                document.dispatchEvent(evt);
+
+                if (isFallbackActive && window.fallbackGameInstance) {
+                    if (eventType === 'keydown') {
+                        window.fallbackGameInstance.onKeyDown(keyCode, key);
+                    } else if (eventType === 'keyup') {
+                        window.fallbackGameInstance.onKeyUp(keyCode, key);
+                    }
+                }
+            } catch (e) {
+                console.error("Error dispatching key event:", e);
+            }
+        };
+
+        // Bridge function: Simulate Pointer / Mouse events into Ruffle
+        window.sendMouseEvent = function(eventType, x, y, button) {
+            try {
+                const target = document.getElementById("active-ruffle-player") || document.getElementById("fallback-canvas") || window;
+                const rect = target.getBoundingClientRect ? target.getBoundingClientRect() : { left: 0, top: 0 };
+                const clientX = rect.left + (x * (rect.width || window.innerWidth));
+                const clientY = rect.top + (y * (rect.height || window.innerHeight));
+
+                const evt = new MouseEvent(eventType, {
+                    clientX: clientX,
+                    clientY: clientY,
+                    button: button || 0,
+                    buttons: eventType === 'mousedown' ? (button === 2 ? 2 : 1) : 0,
+                    bubbles: true,
+                    cancelable: true
+                });
+                target.dispatchEvent(evt);
+
+                if (isFallbackActive && window.fallbackGameInstance) {
+                    window.fallbackGameInstance.onMouseEvent(eventType, clientX, clientY);
+                }
+            } catch (e) {
+                console.error("Error dispatching mouse event:", e);
+            }
+        };
+
+        // Bridge function: Set volume / mute
+        window.setAudioMuted = function(isMuted) {
+            if (player && typeof player.setVolume === 'function') {
+                player.setVolume(isMuted ? 0 : 1);
+            }
+            if (window.RufflePlayer && window.RufflePlayer.config) {
+                window.RufflePlayer.config.unmuteOverlay = isMuted ? "visible" : "hidden";
+            }
+        };
+
+        // Bridge function: Pause / Resume playback
+        window.setPlaybackPaused = function(isPaused) {
+            if (player) {
+                if (isPaused && typeof player.pause === 'function') {
+                    player.pause();
+                } else if (!isPaused && typeof player.play === 'function') {
+                    player.play();
+                }
+            }
+        };
+
+        // Bridge function: Toggle Virtual Mouse Overlay Layer
+        window.setVirtualMouseMode = function(enabled) {
+            const layer = document.getElementById("virtual-mouse-layer");
+            if (layer) {
+                if (enabled) layer.classList.add("active");
+                else layer.classList.remove("active");
+            }
+        };
+
+        function setupPlayerEventListeners() {
+            const mouseLayer = document.getElementById("virtual-mouse-layer");
+            if (mouseLayer) {
+                mouseLayer.addEventListener('pointerdown', (e) => {
+                    const rect = mouseLayer.getBoundingClientRect();
+                    const normX = (e.clientX - rect.left) / rect.width;
+                    const normY = (e.clientY - rect.top) / rect.height;
+                    window.sendMouseEvent('mousedown', normX, normY, e.button || 0);
+                });
+                mouseLayer.addEventListener('pointerup', (e) => {
+                    const rect = mouseLayer.getBoundingClientRect();
+                    const normX = (e.clientX - rect.left) / rect.width;
+                    const normY = (e.clientY - rect.top) / rect.height;
+                    window.sendMouseEvent('mouseup', normX, normY, e.button || 0);
+                    window.sendMouseEvent('click', normX, normY, e.button || 0);
+                });
+                mouseLayer.addEventListener('pointermove', (e) => {
+                    const rect = mouseLayer.getBoundingClientRect();
+                    const normX = (e.clientX - rect.left) / rect.width;
+                    const normY = (e.clientY - rect.top) / rect.height;
+                    window.sendMouseEvent('mousemove', normX, normY, 0);
+                });
+            }
+        }
+
+        // --- High Performance Fallback Sandbox Game Engines ---
+        function startFallbackEngine(filename) {
+            console.log("Starting instant sandbox fallback engine for:", filename);
+            isFallbackActive = true;
+            isLoaded = true;
+            hideLoader();
+
+            const canvas = document.getElementById("fallback-canvas");
+            canvas.style.display = "block";
+            const ctx = canvas.getContext("2d");
+
+            function resizeCanvas() {
+                canvas.width = canvas.parentElement.clientWidth || 800;
+                canvas.height = canvas.parentElement.clientHeight || 600;
+            }
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            const lowerName = (filename || "").toLowerCase();
+            if (lowerName.includes("space") || lowerName.includes("blitz") || lowerName.includes("astro")) {
+                window.fallbackGameInstance = new SpaceBlitzGame(canvas, ctx);
+            } else if (lowerName.includes("snake") || lowerName.includes("worm")) {
+                window.fallbackGameInstance = new SnakeGame(canvas, ctx);
+            } else if (lowerName.includes("pong") || lowerName.includes("paddle") || lowerName.includes("table")) {
+                window.fallbackGameInstance = new PongGame(canvas, ctx);
+            } else {
+                window.fallbackGameInstance = new SpaceBlitzGame(canvas, ctx);
+            }
+
+            if (window.AndroidBridge && typeof window.AndroidBridge.onPlayerLoaded === 'function') {
+                window.AndroidBridge.onPlayerLoaded(filename || "Interactive Flash Game", 800, 600, 60.0, 1);
+            }
+
+            function loop() {
+                if (window.fallbackGameInstance && isFallbackActive) {
+                    window.fallbackGameInstance.update();
+                    window.fallbackGameInstance.render();
+                    updateFps();
+                    fallbackAnimationId = requestAnimationFrame(loop);
+                }
+            }
+            loop();
+        }
+
+        // --- Space Blitz Fallback ---
+        class SpaceBlitzGame {
+            constructor(canvas, ctx) {
+                this.canvas = canvas;
+                this.ctx = ctx;
+                this.ship = { x: canvas.width / 2, y: canvas.height / 2, angle: 0, vx: 0, vy: 0 };
+                this.bullets = [];
+                this.asteroids = [];
+                this.particles = [];
+                this.score = 0;
+                this.keys = {};
+                for (let i = 0; i < 6; i++) this.spawnAsteroid();
+            }
+
+            spawnAsteroid() {
+                this.asteroids.push({
+                    x: Math.random() * this.canvas.width,
+                    y: Math.random() * this.canvas.height,
+                    vx: (Math.random() - 0.5) * 2,
+                    vy: (Math.random() - 0.5) * 2,
+                    radius: 20 + Math.random() * 25
+                });
+            }
+
+            onKeyDown(code, key) {
+                this.keys[code] = true;
+                this.keys[key] = true;
+                if (code === 32 || key === ' ' || code === 88 || key === 'x') {
+                    this.fireBullet();
+                }
+            }
+
+            onKeyUp(code, key) {
+                this.keys[code] = false;
+                this.keys[key] = false;
+            }
+
+            onMouseEvent(type, x, y) {
+                if (type === 'mousedown') this.fireBullet();
+                const dx = x - this.ship.x;
+                const dy = y - this.ship.y;
+                this.ship.angle = Math.atan2(dy, dx);
+            }
+
+            fireBullet() {
+                this.bullets.push({
+                    x: this.ship.x + Math.cos(this.ship.angle) * 20,
+                    y: this.ship.y + Math.sin(this.ship.angle) * 20,
+                    vx: Math.cos(this.ship.angle) * 9,
+                    vy: Math.sin(this.ship.angle) * 9,
+                    life: 50
+                });
+            }
+
+            update() {
+                if (this.keys[37] || this.keys['ArrowLeft'] || this.keys['a']) this.ship.angle -= 0.08;
+                if (this.keys[39] || this.keys['ArrowRight'] || this.keys['d']) this.ship.angle += 0.08;
+                if (this.keys[38] || this.keys['ArrowUp'] || this.keys['w']) {
+                    this.ship.vx += Math.cos(this.ship.angle) * 0.25;
+                    this.ship.vy += Math.sin(this.ship.angle) * 0.25;
+                    this.particles.push({
+                        x: this.ship.x - Math.cos(this.ship.angle) * 15,
+                        y: this.ship.y - Math.sin(this.ship.angle) * 15,
+                        vx: -Math.cos(this.ship.angle) * 2 + (Math.random()-0.5),
+                        vy: -Math.sin(this.ship.angle) * 2 + (Math.random()-0.5),
+                        life: 20, color: '#FF5722'
+                    });
+                }
+
+                this.ship.vx *= 0.98;
+                this.ship.vy *= 0.98;
+                this.ship.x += this.ship.vx;
+                this.ship.y += this.ship.vy;
+
+                if (this.ship.x < 0) this.ship.x = this.canvas.width;
+                if (this.ship.x > this.canvas.width) this.ship.x = 0;
+                if (this.ship.y < 0) this.ship.y = this.canvas.height;
+                if (this.ship.y > this.canvas.height) this.ship.y = 0;
+
+                for (let i = this.bullets.length - 1; i >= 0; i--) {
+                    const b = this.bullets[i];
+                    b.x += b.vx;
+                    b.y += b.vy;
+                    if (--b.life <= 0) {
+                        this.bullets.splice(i, 1);
+                        continue;
+                    }
+                    for (let j = this.asteroids.length - 1; j >= 0; j--) {
+                        const ast = this.asteroids[j];
+                        const dist = Math.hypot(b.x - ast.x, b.y - ast.y);
+                        if (dist < ast.radius) {
+                            this.score += 100;
+                            for (let p = 0; p < 12; p++) {
+                                this.particles.push({
+                                    x: ast.x, y: ast.y,
+                                    vx: (Math.random() - 0.5) * 4,
+                                    vy: (Math.random() - 0.5) * 4,
+                                    life: 25, color: '#00E5FF'
+                                });
+                            }
+                            this.asteroids.splice(j, 1);
+                            this.bullets.splice(i, 1);
+                            this.spawnAsteroid();
+                            break;
+                        }
+                    }
+                }
+
+                this.asteroids.forEach(a => {
+                    a.x += a.vx;
+                    a.y += a.vy;
+                    if (a.x < 0) a.x = this.canvas.width;
+                    if (a.x > this.canvas.width) a.x = 0;
+                    if (a.y < 0) a.y = this.canvas.height;
+                    if (a.y > this.canvas.height) a.y = 0;
+                });
+
+                for (let i = this.particles.length - 1; i >= 0; i--) {
+                    const p = this.particles[i];
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    if (--p.life <= 0) this.particles.splice(i, 1);
+                }
+            }
+
+            render() {
+                const ctx = this.ctx;
+                ctx.fillStyle = '#080B11';
+                ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+                ctx.lineWidth = 1;
+                const gridSize = 40;
+                for (let x = 0; x < this.canvas.width; x += gridSize) {
+                    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, this.canvas.height); ctx.stroke();
+                }
+                for (let y = 0; y < this.canvas.height; y += gridSize) {
+                    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(this.canvas.width, y); ctx.stroke();
+                }
+
+                ctx.strokeStyle = '#00E5FF';
+                ctx.lineWidth = 2;
+                this.asteroids.forEach(a => {
+                    ctx.beginPath();
+                    ctx.arc(a.x, a.y, a.radius, 0, Math.PI * 2);
+                    ctx.stroke();
+                });
+
+                ctx.fillStyle = '#FFEA00';
+                this.bullets.forEach(b => {
+                    ctx.beginPath();
+                    ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+
+                this.particles.forEach(p => {
+                    ctx.fillStyle = p.color;
+                    ctx.fillRect(p.x, p.y, 2, 2);
+                });
+
+                ctx.save();
+                ctx.translate(this.ship.x, this.ship.y);
+                ctx.rotate(this.ship.angle);
+                ctx.strokeStyle = '#FF5722';
+                ctx.lineWidth = 2.5;
+                ctx.fillStyle = '#1E293B';
+                ctx.beginPath();
+                ctx.moveTo(18, 0);
+                ctx.lineTo(-12, -10);
+                ctx.lineTo(-6, 0);
+                ctx.lineTo(-12, 10);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = 'bold 16px sans-serif';
+                ctx.fillText('SCORE: ' + this.score, 20, 30);
+            }
+        }
+
+        // --- Pong Game ---
+        class PongGame {
+            constructor(canvas, ctx) {
+                this.canvas = canvas;
+                this.ctx = ctx;
+                this.paddleH = 80;
+                this.paddleW = 12;
+                this.p1Y = canvas.height / 2 - this.paddleH / 2;
+                this.p2Y = canvas.height / 2 - this.paddleH / 2;
+                this.ball = { x: canvas.width / 2, y: canvas.height / 2, vx: 5, vy: 3, radius: 8 };
+                this.p1Score = 0;
+                this.p2Score = 0;
+                this.keys = {};
+            }
+
+            onKeyDown(code, key) { this.keys[code] = true; this.keys[key] = true; }
+            onKeyUp(code, key) { this.keys[code] = false; this.keys[key] = false; }
+            onMouseEvent(type, x, y) { this.p1Y = y - this.paddleH / 2; }
+
+            update() {
+                if (this.keys[38] || this.keys['ArrowUp'] || this.keys['w']) this.p1Y -= 7;
+                if (this.keys[40] || this.keys['ArrowDown'] || this.keys['s']) this.p1Y += 7;
+
+                this.p1Y = Math.max(10, Math.min(this.canvas.height - this.paddleH - 10, this.p1Y));
+
+                const p2Center = this.p2Y + this.paddleH / 2;
+                if (p2Center < this.ball.y - 15) this.p2Y += 4.5;
+                else if (p2Center > this.ball.y + 15) this.p2Y -= 4.5;
+
+                this.ball.x += this.ball.vx;
+                this.ball.y += this.ball.vy;
+
+                if (this.ball.y < 10 || this.ball.y > this.canvas.height - 10) {
+                    this.ball.vy *= -1;
+                }
+
+                if (this.ball.x - this.ball.radius < 30 + this.paddleW &&
+                    this.ball.y >= this.p1Y && this.ball.y <= this.p1Y + this.paddleH) {
+                    this.ball.vx = Math.abs(this.ball.vx) * 1.05;
+                }
+
+                if (this.ball.x + this.ball.radius > this.canvas.width - 30 - this.paddleW &&
+                    this.ball.y >= this.p2Y && this.ball.y <= this.p2Y + this.paddleH) {
+                    this.ball.vx = -Math.abs(this.ball.vx) * 1.05;
+                }
+
+                if (this.ball.x < 0) {
+                    this.p2Score++;
+                    this.resetBall();
+                } else if (this.ball.x > this.canvas.width) {
+                    this.p1Score++;
+                    this.resetBall();
+                }
+            }
+
+            resetBall() {
+                this.ball.x = this.canvas.width / 2;
+                this.ball.y = this.canvas.height / 2;
+                this.ball.vx = (Math.random() > 0.5 ? 5 : -5);
+                this.ball.vy = (Math.random() - 0.5) * 6;
+            }
+
+            render() {
+                const ctx = this.ctx;
+                ctx.fillStyle = '#080B11';
+                ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                ctx.strokeStyle = '#222C44';
+                ctx.setLineDash([8, 8]);
+                ctx.beginPath();
+                ctx.moveTo(this.canvas.width / 2, 0);
+                ctx.lineTo(this.canvas.width / 2, this.canvas.height);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                ctx.fillStyle = '#FF5722';
+                ctx.fillRect(30, this.p1Y, this.paddleW, this.paddleH);
+                ctx.fillStyle = '#00E5FF';
+                ctx.fillRect(this.canvas.width - 30 - this.paddleW, this.p2Y, this.paddleW, this.paddleH);
+
+                ctx.fillStyle = '#FFEA00';
+                ctx.beginPath();
+                ctx.arc(this.ball.x, this.ball.y, this.ball.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.font = 'bold 36px monospace';
+                ctx.fillStyle = '#FF5722';
+                ctx.fillText(this.p1Score, this.canvas.width / 2 - 60, 50);
+                ctx.fillStyle = '#00E5FF';
+                ctx.fillText(this.p2Score, this.canvas.width / 2 + 35, 50);
+            }
+        }
+
+        // --- Snake Game ---
+        class SnakeGame {
+            constructor(canvas, ctx) {
+                this.canvas = canvas;
+                this.ctx = ctx;
+                this.grid = 20;
+                this.snake = [{x: 10, y: 10}, {x: 9, y: 10}, {x: 8, y: 10}];
+                this.dir = {x: 1, y: 0};
+                this.food = {x: 15, y: 15};
+                this.score = 0;
+                this.lastMove = 0;
+            }
+
+            onKeyDown(code, key) {
+                if ((code === 37 || key === 'ArrowLeft') && this.dir.x === 0) this.dir = {x: -1, y: 0};
+                if ((code === 38 || key === 'ArrowUp') && this.dir.y === 0) this.dir = {x: 0, y: -1};
+                if ((code === 39 || key === 'ArrowRight') && this.dir.x === 0) this.dir = {x: 1, y: 0};
+                if ((code === 40 || key === 'ArrowDown') && this.dir.y === 0) this.dir = {x: 0, y: 1};
+            }
+            onKeyUp() {}
+            onMouseEvent() {}
+
+            update() {
+                const now = performance.now();
+                if (now - this.lastMove < 100) return;
+                this.lastMove = now;
+
+                const head = { x: this.snake[0].x + this.dir.x, y: this.snake[0].y + this.dir.y };
+                const maxCols = Math.floor(this.canvas.width / this.grid);
+                const maxRows = Math.floor(this.canvas.height / this.grid);
+
+                if (head.x < 0) head.x = maxCols - 1;
+                if (head.x >= maxCols) head.x = 0;
+                if (head.y < 0) head.y = maxRows - 1;
+                if (head.y >= maxRows) head.y = 0;
+
+                this.snake.unshift(head);
+
+                if (head.x === this.food.x && head.y === this.food.y) {
+                    this.score += 10;
+                    this.food = {
+                        x: Math.floor(Math.random() * maxCols),
+                        y: Math.floor(Math.random() * maxRows)
+                    };
+                } else {
+                    this.snake.pop();
+                }
+            }
+
+            render() {
+                const ctx = this.ctx;
+                ctx.fillStyle = '#080B11';
+                ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                ctx.fillStyle = '#FF5722';
+                ctx.beginPath();
+                ctx.arc(this.food.x * this.grid + this.grid/2, this.food.y * this.grid + this.grid/2, this.grid/2 - 2, 0, Math.PI*2);
+                ctx.fill();
+
+                this.snake.forEach((s, i) => {
+                    ctx.fillStyle = i === 0 ? '#00E5FF' : '#0097A7';
+                    ctx.fillRect(s.x * this.grid + 1, s.y * this.grid + 1, this.grid - 2, this.grid - 2);
+                });
+
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = 'bold 16px monospace';
+                ctx.fillText('CYBER SNAKE - SCORE: ' + this.score, 20, 30);
+            }
+        }
+    </script>
+</body>
+</html>

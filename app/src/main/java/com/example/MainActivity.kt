@@ -13,14 +13,17 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.ui.screens.GamePlayerScreen
 import com.example.ui.screens.LibraryScreen
-import com.example.ui.screens.PlayerScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.theme.DarkCanvas
 import com.example.ui.theme.MyApplicationTheme
@@ -42,12 +45,14 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
 
         setContent {
-            MyApplicationTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = DarkCanvas
-                ) {
-                    FlashAppNavigation(viewModel)
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                MyApplicationTheme {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = DarkCanvas
+                    ) {
+                        FlashAppNavigation(viewModel)
+                    }
                 }
             }
         }
@@ -66,7 +71,8 @@ class MainActivity : ComponentActivity() {
             contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                 val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
                 if (nameIndex != -1 && cursor.moveToFirst()) {
-                    fileName = cursor.getString(nameIndex)
+                    val name = cursor.getString(nameIndex)
+                    if (!name.isNullOrBlank()) fileName = name
                 }
             }
             viewModel.importGameFromUri(uri, fileName)
@@ -100,7 +106,7 @@ fun FlashAppNavigation(viewModel: FlashPlayerViewModel) {
         }
 
         composable(ROUTE_PLAYER) {
-            PlayerScreen(
+            GamePlayerScreen(
                 viewModel = viewModel,
                 playerState = playerState,
                 onBack = {
@@ -119,3 +125,4 @@ fun FlashAppNavigation(viewModel: FlashPlayerViewModel) {
         }
     }
 }
+
